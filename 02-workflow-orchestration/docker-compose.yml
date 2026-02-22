@@ -1,0 +1,114 @@
+volumes:
+  ny_taxi_postgres_data:
+    driver: local
+  dagster_postgres_data:
+    driver: local
+  dagster_storage:
+    driver: local
+
+services:
+  # Data warehouse PostgreSQL
+  pgdatabase:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: ny_taxi
+    ports:
+      - "5432:5432"
+    volumes:
+      - ny_taxi_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ny_taxi -U root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@admin.com
+      - PGADMIN_DEFAULT_PASSWORD=root
+    ports:
+      - "8085:80"
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+
+  # Dagster PostgreSQL for metadata storage
+  dagster_postgres:
+    image: postgres:18
+    container_name: dagster_postgres
+    environment:
+      POSTGRES_DB: dagster
+      POSTGRES_USER: dagster
+      POSTGRES_PASSWORD: dagster123
+    volumes:
+      - dagster_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d dagster -U dagster"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5433:5432"
+
+  # Dagster Daemon - scheduler and run launcher
+  dagster_daemon:
+    build:
+      context: ./dagster_project
+      dockerfile: Dockerfile
+    container_name: dagster_daemon
+    command: dagster-daemon run -m dags
+    environment:
+      DAGSTER_POSTGRES_HOST: dagster_postgres
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: dagster123
+      # Data warehouse connection
+      POSTGRES_HOST: pgdatabase
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ny_taxi
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    volumes:
+      - dagster_storage:/app/storage
+    depends_on:
+      dagster_postgres:
+        condition: service_healthy
+      pgdatabase:
+        condition: service_healthy
+    restart: on-failure
+
+  # Dagster Webserver - UI
+  dagster_webserver:
+    build:
+      context: ./dagster_project
+      dockerfile: Dockerfile
+    container_name: dagster_webserver
+    command: dagster-webserver -h 0.0.0.0 -p 3000 -m dags
+    environment:
+      DAGSTER_POSTGRES_HOST: dagster_postgres
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: dagster123
+      # Data warehouse connection
+      POSTGRES_HOST: pgdatabase
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ny_taxi
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    ports:
+      - "3000:3000"
+    volumes:
+      - dagster_storage:/app/storage
+    depends_on:
+      dagster_postgres:
+        condition: service_healthy
+      dagster_daemon:
+        condition: service_started
+    restart: on-failure
+    

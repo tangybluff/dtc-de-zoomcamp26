@@ -1,0 +1,29 @@
+# Project-level Dagster instance configuration.
+# This file controls orchestration runtime behavior (scheduler, launcher, metadata storage).
+
+scheduler:
+  # Use Dagster daemon scheduler for cron/scheduled jobs.
+  module: dagster_daemon.scheduler
+  class: DagsterDaemonScheduler
+
+run_launcher:
+  # Launch runs in-process (simple local setup).
+  # For production you may switch to a queue-based or K8s/Celery launcher.
+  module: dagster.run_launcher
+  class: InProcessRunLauncher
+
+# Database configuration for Dagster metadata storage
+storage:
+  # Keep run/event metadata in local sqlite under DAGSTER_HOME/.dagster.
+  sqlite_db:
+    base_dir: .dagster
+
+# Asset definitions
+asset_defs:
+# Dagster imports these modules to discover jobs/ops/assets.
+- module: dags.dag_01_hello_world
+- module: dags.dag_02_python_tasks
+- module: dags.dag_03_data_pipeline
+- module: dags.dag_04_postgres_taxi
+- module: dags.dag_05_gcp_integration
+- module: dags.dag_06_chat_pipeline
